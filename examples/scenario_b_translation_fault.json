@@ -1,0 +1,74 @@
+{
+    "scenario_name": "scenario_b_translation_fault",
+    "description": "Translation fault at Stage 1 Level 2 - invalid descriptor",
+    "architecture": {
+        "granule_size_kb": 4,
+        "va_bits": 48,
+        "pa_bits": 56,
+        "ipa_bits": 48,
+        "feat_d128_enabled": true
+    },
+    "registers": {
+        "TTBR0_EL1": "0x0000000040000000",
+        "TTBR1_EL1": "0x0000000080000000",
+        "VTTBR_EL2": "0x0000000100000000",
+        "TCR_EL1": {
+            "T0SZ": 16,
+            "T1SZ": 16
+        },
+        "VTCR_EL2": {
+            "T0SZ": 16,
+            "SL0": 0
+        }
+    },
+    "memory_access": {
+        "virtual_address": "0x0000000012345678",
+        "access_type": "READ",
+        "privilege_level": "EL0"
+    },
+    "translation_tables": {
+        "stage1": {
+            "0x0000000140000000": {
+                "value": "0x0000000041000003",
+                "type": "table",
+                "comment": "S1 L0 -> L1 table at IPA 0x41000000"
+            },
+            "0x0000000141000048": {
+                "value": "0x0000000042000003",
+                "type": "table",
+                "comment": "S1 L1 -> L2 table at IPA 0x42000000"
+            },
+            "0x0000000142000468": {
+                "value": "0x0000000000000000",
+                "type": "invalid",
+                "comment": "S1 L2 -> INVALID DESCRIPTOR (bit 0 = 0)"
+            }
+        },
+        "stage2": {
+            "0x0000000100000000": {
+                "value": "0x0000000110000003",
+                "type": "table"
+            },
+            "0x0000000110000000": {
+                "value": "0x0000000120000003",
+                "type": "table"
+            },
+            "0x0000000120000000": {
+                "value": "0x0000000130000003",
+                "type": "table"
+            },
+            "0x0000000130000200": {
+                "value": "0x0000000140000443",
+                "type": "page"
+            },
+            "0x0000000130000208": {
+                "value": "0x0000000141000443",
+                "type": "page"
+            },
+            "0x0000000130000210": {
+                "value": "0x0000000142000443",
+                "type": "page"
+            }
+        }
+    }
+}

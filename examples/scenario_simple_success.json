@@ -1,0 +1,83 @@
+{
+    "scenario_name": "scenario_simple_success",
+    "description": "Simple successful 2-stage walk - minimal translation tables",
+    "architecture": {
+        "granule_size_kb": 4,
+        "va_bits": 48,
+        "pa_bits": 56,
+        "ipa_bits": 48,
+        "feat_d128_enabled": true
+    },
+    "registers": {
+        "TTBR0_EL1": "0x0000000000001000",
+        "TTBR1_EL1": "0x0000000080000000",
+        "VTTBR_EL2": "0x0000000000002000",
+        "TCR_EL1": {
+            "T0SZ": 16,
+            "T1SZ": 16
+        },
+        "VTCR_EL2": {
+            "T0SZ": 16,
+            "SL0": 0
+        }
+    },
+    "memory_access": {
+        "virtual_address": "0x0000000000000ABC",
+        "access_type": "READ",
+        "privilege_level": "EL0"
+    },
+    "translation_tables": {
+        "stage1": {
+            "0x0000000000011000": {
+                "value": "0x0000000000003003",
+                "comment": "S1 L0[0] -> L1 table at IPA 0x3000"
+            },
+            "0x0000000000013000": {
+                "value": "0x0000000000004003",
+                "comment": "S1 L1[0] -> L2 table at IPA 0x4000"
+            },
+            "0x0000000000014000": {
+                "value": "0x0000000000005003",
+                "comment": "S1 L2[0] -> L3 table at IPA 0x5000"
+            },
+            "0x0000000000015000": {
+                "value": "0x0000000000100443",
+                "comment": "S1 L3[0] -> Page at IPA 0x100000, AP=01 (RW)"
+            }
+        },
+        "stage2": {
+            "0x0000000000002000": {
+                "value": "0x0000000000010003",
+                "comment": "S2 L0[0] -> L1 table at PA 0x10000"
+            },
+            "0x0000000000010000": {
+                "value": "0x0000000000020003",
+                "comment": "S2 L1[0] -> L2 table at PA 0x20000"
+            },
+            "0x0000000000020000": {
+                "value": "0x0000000000030003",
+                "comment": "S2 L2[0] -> L3 table at PA 0x30000"
+            },
+            "0x0000000000030008": {
+                "value": "0x0000000000011443",
+                "comment": "S2 L3[1] -> PA 0x11000 for IPA=0x1000 (S1 L0 table)"
+            },
+            "0x0000000000030018": {
+                "value": "0x0000000000013443",
+                "comment": "S2 L3[3] -> PA 0x13000 for IPA=0x3000 (S1 L1 table)"
+            },
+            "0x0000000000030020": {
+                "value": "0x0000000000014443",
+                "comment": "S2 L3[4] -> PA 0x14000 for IPA=0x4000 (S1 L2 table)"
+            },
+            "0x0000000000030028": {
+                "value": "0x0000000000015443",
+                "comment": "S2 L3[5] -> PA 0x15000 for IPA=0x5000 (S1 L3 table)"
+            },
+            "0x0000000000030800": {
+                "value": "0x0000000000200443",
+                "comment": "S2 L3[0x100] -> PA 0x200000 for final IPA=0x100000"
+            }
+        }
+    }
+}

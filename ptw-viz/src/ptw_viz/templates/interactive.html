@@ -1,0 +1,2396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARM v9 Page Table Walk Visualizer</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-highlight: #30363d;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-magenta: #bc8cff;
+            --accent-cyan: #39c5cf;
+            --accent-orange: #f0883e;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --border-color: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        /* Recursive Table View Styles */
+        .recursive-view-container {
+            display: none;
+            /* Hidden by default */
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--bg-tertiary);
+            padding: 1rem;
+            margin-top: 1rem;
+            overflow-x: auto;
+        }
+
+        .recursive-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 4px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+
+        .recursive-table th {
+            text-align: left;
+            padding: 0.8rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        .recursive-table td {
+            padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .recursive-table tr.s1-group-header {
+            background: rgba(77, 168, 218, 0.15);
+        }
+
+        .recursive-table tr.s2-row {
+            /* S2 rows */
+        }
+
+        .recursive-table tr.active-row {
+            border: 1px solid var(--accent-yellow);
+            box-shadow: 0 0 0 1px var(--accent-yellow);
+            background: rgba(255, 217, 61, 0.1) !important;
+        }
+
+        .recursive-table tr.active-row td:first-child {
+            border-left: 3px solid var(--accent-yellow);
+        }
+
+        .cell-indent {
+            display: flex;
+            align-items: center;
+        }
+
+        .tree-line {
+            width: 20px;
+            height: 100%;
+            border-left: 1px dashed var(--text-secondary);
+            margin-right: 10px;
+            display: inline-block;
+        }
+
+        .mini-badge {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-right: 8px;
+        }
+
+        .view-toggle {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 4px;
+            margin-right: 1rem;
+        }
+
+        .view-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .view-btn.active {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+            font-weight: bold;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .status-success {
+            background: rgba(63, 185, 80, 0.15);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .status-fault {
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        /* File Loader */
+        .file-loader {
+            background: var(--bg-secondary);
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            margin: 2rem auto;
+            max-width: 600px;
+        }
+
+        .file-loader:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .file-loader.hidden {
+            display: none;
+        }
+
+        .file-loader input[type="file"] {
+            display: none;
+        }
+
+        .file-loader label {
+            cursor: pointer;
+            padding: 0.8rem 2rem;
+            background: var(--accent-blue);
+            border-radius: 8px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        /* Controls */
+        .controls-bar {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            border: 1px solid var(--border-color);
+        }
+
+        .step-indicator {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            min-width: 140px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .speed-control input {
+            width: 80px;
+            accent-color: var(--accent-blue);
+        }
+
+        /* Main Layout */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr 340px;
+            gap: 1rem;
+        }
+
+        @media (max-width: 1400px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        /* Event Timeline (Left Panel) */
+        .event-timeline {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+
+        .event-item {
+            padding: 0.6rem 0.8rem;
+            border-radius: 6px;
+            margin-bottom: 0.4rem;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            opacity: 0.5;
+        }
+
+        .event-item:hover {
+            background: var(--bg-highlight);
+            opacity: 0.8;
+        }
+
+        .event-item.active {
+            opacity: 1;
+            border-left-color: var(--accent-blue);
+            background: var(--bg-highlight);
+        }
+
+        .event-item.completed {
+            opacity: 0.7;
+            border-left-color: var(--accent-green);
+        }
+
+        .event-item.step-zero {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(188, 140, 255, 0.1));
+            border-left-color: var(--accent-magenta);
+        }
+
+        .event-num {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .event-hint {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+            font-style: italic;
+        }
+
+        .event-badges {
+            display: flex;
+            gap: 0.3rem;
+            margin-top: 0.25rem;
+        }
+
+        .badge {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        .badge-s1 {
+            background: rgba(88, 166, 255, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .badge-s2 {
+            background: rgba(188, 140, 255, 0.2);
+            color: var(--accent-magenta);
+        }
+
+        .badge-table {
+            background: rgba(57, 197, 207, 0.2);
+            color: var(--accent-cyan);
+        }
+
+        .badge-page {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-block {
+            background: rgba(210, 153, 34, 0.2);
+            color: var(--accent-yellow);
+        }
+
+        .badge-init {
+            background: rgba(240, 136, 62, 0.2);
+            color: var(--accent-orange);
+        }
+
+        /* Details Panel (Center) */
+        .details-panel {
+            min-height: calc(100vh - 200px);
+        }
+
+        .details-grid {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .detail-field {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .detail-field.highlight-input {
+            border-left-color: var(--accent-yellow);
+        }
+
+        .detail-field.highlight-calc {
+            border-left-color: var(--accent-cyan);
+        }
+
+        .detail-field.highlight-read {
+            border-left-color: var(--accent-magenta);
+        }
+
+        .detail-field.highlight-output {
+            border-left-color: var(--accent-green);
+        }
+
+        .detail-field.highlight-reg {
+            border-left-color: var(--accent-orange);
+        }
+
+        .field-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.4rem;
+        }
+
+        .field-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .field-value {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+
+        .field-value.mono-sm {
+            font-size: 0.95rem;
+        }
+
+        .field-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+            line-height: 1.4;
+        }
+
+        /* Step Guide Box */
+        .step-guide {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(57, 197, 207, 0.05));
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .step-guide-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            margin-bottom: 0.3rem;
+        }
+
+        .step-guide-text {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Info icon with LEFT-positioned tooltip */
+        .info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--bg-highlight);
+            color: var(--text-secondary);
+            font-size: 0.65rem;
+            cursor: help;
+            font-style: italic;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .info-icon:hover {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+        }
+
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tooltip-text {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            z-index: 100;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            width: 300px;
+            bottom: 125%;
+            right: 0;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: opacity 0.2s;
+            line-height: 1.5;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Bit Diagram */
+        .bit-diagram {
+            background: var(--bg-primary);
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            overflow-x: auto;
+        }
+
+        .bit-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.4rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .bit-label {
+            min-width: 90px;
+            color: var(--text-secondary);
+        }
+
+        .bit-tag {
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+        }
+
+        /* Register Values */
+        .reg-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1rem;
+        }
+
+        .reg-item {
+            background: var(--bg-primary);
+            padding: 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .reg-row-top {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            align-items: center;
+        }
+
+        .reg-binary {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--accent-cyan);
+            word-spacing: 0.2rem;
+            word-break: break-all;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 6px;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+            line-height: 1.4;
+        }
+
+        .reg-name {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .reg-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-orange);
+        }
+
+        /* Summary Panel */
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--bg-tertiary);
+            font-size: 0.85rem;
+        }
+
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+
+        .summary-label {
+            color: var(--text-secondary);
+        }
+
+        .summary-value {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-yellow);
+            font-size: 0.8rem;
+        }
+
+        /* Flow Diagram */
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            opacity: 0.4;
+            transition: all 0.3s;
+            font-size: 0.85rem;
+        }
+
+        .flow-step.active {
+            opacity: 1;
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .flow-step.completed {
+            opacity: 0.8;
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .flow-icon {
+            font-size: 1rem;
+        }
+
+        .flow-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .flow-value {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--accent-yellow);
+        }
+
+        .flow-arrow {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* Placeholder */
+        .placeholder-msg {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 2rem 1rem;
+        }
+
+        /* Progress bar */
+        .progress-bar-container {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-magenta));
+            transition: width 0.3s;
+        }
+
+        /* Animation */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(88, 166, 255, 0);
+            }
+        }
+
+        .event-item.active {
+            animation: pulse 2s infinite;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Recursive Context Box */
+        .context-box {
+            background: linear-gradient(135deg, rgba(188, 140, 255, 0.1), rgba(88, 166, 255, 0.05));
+            border: 1px solid var(--accent-magenta);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .context-box.s1-context {
+            border-color: var(--accent-blue);
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(57, 197, 207, 0.05));
+        }
+
+        .context-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-magenta);
+            margin-bottom: 0.4rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .context-box.s1-context .context-title {
+            color: var(--accent-blue);
+        }
+
+        .context-breadcrumb {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            flex-wrap: wrap;
+        }
+
+        .context-breadcrumb .crumb {
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+        }
+
+        .context-breadcrumb .crumb.active {
+            background: var(--accent-magenta);
+            color: var(--bg-primary);
+        }
+
+        .context-breadcrumb .crumb.s1 {
+            background: var(--accent-blue);
+            color: var(--bg-primary);
+        }
+
+        .context-breadcrumb .arrow {
+            color: var(--text-secondary);
+        }
+
+        /* VA Reference Panel */
+        .va-reference {
+            background: var(--bg-primary);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            margin-top: 0.5rem;
+            border-left: 3px solid var(--accent-yellow);
+        }
+
+        .va-reference-title {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 0.3rem;
+        }
+
+        .va-indices {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+
+        .va-index {
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+        }
+
+        .va-index.current {
+            background: var(--accent-yellow);
+            color: var(--bg-primary);
+            font-weight: 600;
+        }
+
+        /* Nesting indicator for events */
+        .event-item.s2-nested {
+            margin-left: 1rem;
+            border-left-color: var(--accent-magenta);
+            background: linear-gradient(90deg, rgba(188, 140, 255, 0.05), var(--bg-tertiary));
+        }
+
+        .event-item.s2-nested::before {
+            content: '↳';
+            position: absolute;
+            left: -0.8rem;
+            color: var(--accent-magenta);
+            font-size: 0.8rem;
+        }
+
+        .event-item {
+            position: relative;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-highlight);
+            border-radius: 3px;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <!-- File Loader -->
+        <div class="file-loader" id="fileLoader">
+            <h2 style="margin-bottom: 1rem; color: var(--text-primary);">🔍 ARM v9 Page Table Walk Visualizer</h2>
+            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                Load a PTW trace JSON file to visualize the step-by-step translation
+            </p>
+            <input type="file" id="jsonFile" accept=".json">
+            <label for="jsonFile">📁 Choose JSON File</label>
+            <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+                Or drag and drop a file here
+            </p>
+        </div>
+
+        <!-- Main Visualization -->
+        <div id="visualization" class="hidden">
+            <!-- Header -->
+            <header class="header">
+                <h1>🔍 ARM v9 Page Table Walk</h1>
+                <p style="color: var(--text-secondary); font-size: 0.9rem;" id="scenarioInfo">-</p>
+                <div class="status-badge" id="statusBadge">-</div>
+            </header>
+
+            <!-- Controls -->
+            <div class="controls-bar">
+                <button class="btn btn-secondary" id="btnLoadAnother"
+                    style="background: var(--accent-cyan); color: #0d1117;">📂 Load Another File</button>
+                <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.5rem;"></div>
+                <button class="btn btn-secondary" id="btnReset">⏮ Reset</button>
+                <button class="btn btn-secondary" id="btnPrev">◀ Prev</button>
+                <button class="btn btn-primary" id="btnPlayPause">▶ Play</button>
+                <button class="btn btn-secondary" id="btnNext">Next ▶</button>
+                <button class="btn btn-secondary" id="btnEnd">End ⏭</button>
+
+                <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.5rem;"></div>
+
+                <div class="view-toggle">
+                    <button class="view-btn active" id="btnViewTimeline"
+                        title="Standard Timeline View">Timeline</button>
+                    <button class="view-btn" id="btnViewTable" title="Recursive Table View">Table</button>
+                </div>
+
+                <div class="step-indicator">
+                    Step <span id="currentStep">0</span> / <span id="totalSteps">0</span>
+                </div>
+                <div class="speed-control">
+                    <span>Speed:</span>
+                    <input type="range" id="speedSlider" min="200" max="2000" value="800">
+                    <span id="speedValue">800ms</span>
+                </div>
+            </div>
+
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+
+            <!-- Recursive Table View Container -->
+            <div id="recursiveView" class="recursive-view-container">
+                <table class="recursive-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 300px;">Translation Step</th>
+                            <th>Address Input</th>
+                            <th>Table Base</th>
+                            <th>Index</th>
+                            <th>Descriptor Value</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recursiveTableBody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="main-layout" id="mainLayout">
+                <!-- Left: Event Timeline -->
+                <div class="card">
+                    <div class="card-header">📜 Walk Steps</div>
+                    <div class="card-body event-timeline" id="eventList"></div>
+                </div>
+
+                <!-- Center: Details Panel -->
+                <div class="card details-panel">
+                    <div class="card-header">📋 Step Details</div>
+                    <div class="card-body" id="detailsContent">
+                        <div class="placeholder-msg">
+                            <p>👆 Click <strong>Play</strong> or select a step to see detailed breakdown</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Summary -->
+                <div>
+                    <div class="card" style="margin-bottom: 1rem;">
+                        <div class="card-header">🔧 Input Registers</div>
+                        <div class="card-body" id="registerSummary"></div>
+                    </div>
+                    <div class="card" style="margin-bottom: 1rem;">
+                        <div class="card-header">📍 Address Summary</div>
+                        <div class="card-body" id="addressSummary"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">🔄 Translation Flow</div>
+                        <div class="card-body" id="flowDiagram"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let walkData = null;
+        let loadedFilePath = '';
+        let currentEventIndex = -1;  // -1 = before step 0, 0 = step 0 (init), 1+ = events
+        let isPlaying = false;
+        let playInterval = null;
+        let animationSpeed = 800;
+
+        // Helper: Extract 9-bit index using BigInt (for 64-bit addresses)
+        function extractIndex(addrHex, level) {
+            const addr = BigInt(addrHex);
+            const shifts = { 0: 39n, 1: 30n, 2: 21n, 3: 12n };
+            const shift = shifts[level] ?? 12n;
+            return Number((addr >> shift) & 0x1FFn);
+        }
+
+        // Helper: Format hex string as 64-bit binary with byte grouping
+        function formatBinary(hex) {
+            if (!hex || hex === '-' || hex === '0x0') return '0'.repeat(64).match(/.{1,8}/g).join(' ');
+            try {
+                const val = BigInt(hex);
+                // Pad to 64 bits
+                const bin = val.toString(2).padStart(64, '0');
+                // Group by 8 for readability: "00000000 00000000..."
+                return bin.match(/.{1,8}/g).join(' ');
+            } catch (e) { return ''; }
+        }
+
+        // Helper: Get binary string for specific bits
+        function getBitRange(addrHex, highBit, lowBit) {
+            const addr = BigInt(addrHex);
+            const mask = (1n << BigInt(highBit - lowBit + 1)) - 1n;
+            const value = (addr >> BigInt(lowBit)) & mask;
+            return value.toString(2).padStart(highBit - lowBit + 1, '0');
+        }
+
+        // Helper: Format address with bit highlighting
+        function formatAddressBits(addrHex, highlightHigh, highlightLow, color) {
+            const addr = BigInt(addrHex);
+            let binary = addr.toString(2).padStart(48, '0');
+            let html = '';
+            for (let i = 47; i >= 0; i--) {
+                const bit = binary[47 - i];
+                if (i <= highlightHigh && i >= highlightLow) {
+                    html += `<span style="background: ${color}; color: #0d1117; padding: 0 1px;">${bit}</span>`;
+                } else {
+                    html += `<span style="color: #8b949e;">${bit}</span>`;
+                }
+                if (i > 0 && i % 4 === 0) html += ' ';
+            }
+            return html;
+        }
+
+        // Helper: Analyze which S1 level this S2 walk is serving
+        function analyzeS2Context(event, eventIndex) {
+            // Parse the purpose to understand what this S2 is translating
+            const purpose = event.purpose || '';
+
+            // Common patterns: "S2 for S1 L0 table @ IPA 0x1000"
+            const match = purpose.match(/S2 for S1 L(\d)/);
+            if (match) {
+                return {
+                    isS2ForS1: true,
+                    s1Level: parseInt(match[1]),
+                    explanation: `Stage 2 is translating the IPA of Stage 1's Level ${match[1]} table`,
+                    tableIPA: purpose.match(/IPA (0x[0-9A-Fa-f]+)/)?.[1] || null
+                };
+            }
+
+            // Fallback: Infer from sequence (Look behind for the previous S1 event)
+            if (event.stage === 2) {
+                const s1Ctx = getCurrentS1Context(eventIndex);
+                if (s1Ctx && s1Ctx.nextLevel !== null && s1Ctx.event) {
+                    // We are likely translating the table address for the next level
+                    // Extract the IPA from the previous S1 descriptor
+                    let derivedIPA = null;
+                    try {
+                        const desc = BigInt(s1Ctx.event.descriptor_value || 0);
+                        // Assume 4KB granule: output address is bits [47:12]
+                        // Simple mask: 0x0000FFFFFFFFF000
+                        const mask = 0x0000FFFFFFFFF000n;
+                        derivedIPA = '0x' + (desc & mask).toString(16).toUpperCase();
+                    } catch (e) { }
+
+                    return {
+                        isS2ForS1: true,
+                        s1Level: s1Ctx.nextLevel,
+                        explanation: `Stage 2 is translating the IPA of Stage 1's Level ${s1Ctx.nextLevel} table (Inferred)`,
+                        tableIPA: derivedIPA
+                    };
+                } else if (!s1Ctx && eventIndex > 0) {
+                    // No previous S1 event? Must be Initial S1 L0 Lookup
+                    return {
+                        isS2ForS1: true,
+                        s1Level: 0,
+                        explanation: `Stage 2 is translating the Initial Stage 1 Level 0 Table`,
+                        tableIPA: walkData.registers?.ttbr0 || walkData.ttbr0_el1 || null
+                    };
+                }
+            }
+
+            // Final S2 translation pattern
+            if (purpose.includes('Final S2')) {
+                return {
+                    isS2ForS1: false,
+                    isFinalS2: true,
+                    explanation: 'Stage 2 translating the final IPA from Stage 1 to get the Physical Address'
+                };
+            }
+
+            return { isS2ForS1: false, isFinalS2: false };
+        }
+
+        // Helper: Get the current S1 level being served by looking at recent events
+        function getCurrentS1Context(eventIndex) {
+            // Walk backwards to find the most recent S1 event
+            for (let i = eventIndex - 1; i >= 0; i--) {
+                const evt = walkData.events[i];
+                if (evt.stage === 1) {
+                    return {
+                        level: evt.level,
+                        nextLevel: evt.result === 'TABLE' ? evt.level + 1 : null,
+                        wasBlock: evt.result === 'BLOCK',
+                        wasPage: evt.result === 'PAGE',
+                        event: evt
+                    };
+                }
+            }
+            return null;
+        }
+
+        // Helper: Render the original VA with its indices, highlighting current context
+        function renderVAReference(highlightLevel = null, stage = 1) {
+            const l0 = walkData.l0_index || 0;
+            const l1 = walkData.l1_index || 0;
+            const l2 = walkData.l2_index || 0;
+            const l3 = walkData.l3_index || 0;
+            const offset = walkData.page_offset || 0;
+
+            return `
+                <div class="va-reference">
+                    <div class="va-reference-title">📍 Original VA: ${walkData.input_va || '?'}</div>
+                    <div class="va-indices">
+                        <span class="va-index ${highlightLevel === 0 ? 'current' : ''}">L0: ${l0}</span>
+                        <span class="va-index ${highlightLevel === 1 ? 'current' : ''}">L1: ${l1}</span>
+                        <span class="va-index ${highlightLevel === 2 ? 'current' : ''}">L2: ${l2}</span>
+                        <span class="va-index ${highlightLevel === 3 ? 'current' : ''}">L3: ${l3}</span>
+                        <span class="va-index">Offset: 0x${offset.toString(16).toUpperCase()}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Helper: Render recursive context box for S2 events
+        function renderS2ContextBox(event, eventIndex) {
+            const ctx = analyzeS2Context(event, eventIndex);
+            const s1ctx = getCurrentS1Context(eventIndex);
+
+            if (event.stage === 1) {
+                // S1 event - show which VA index we're using
+                return `
+                    <div class="context-box s1-context">
+                        <div class="context-title">
+                            🔵 Stage 1 Translation (Guest OS → Hypervisor)
+                        </div>
+                        <div class="context-breadcrumb">
+                            <span class="crumb s1">VA</span>
+                            <span class="arrow">→</span>
+                            ${event.level >= 0 ? `<span class="crumb ${event.level === 0 ? 'active' : ''}">L0</span><span class="arrow">→</span>` : ''}
+                            ${event.level >= 1 ? `<span class="crumb ${event.level === 1 ? 'active' : ''}">L1</span><span class="arrow">→</span>` : ''}
+                            ${event.level >= 2 ? `<span class="crumb ${event.level === 2 ? 'active' : ''}">L2</span><span class="arrow">→</span>` : ''}
+                            ${event.level >= 3 ? `<span class="crumb ${event.level === 3 ? 'active' : ''}">L3</span><span class="arrow">→</span>` : ''}
+                            <span class="crumb">IPA</span>
+                        </div>
+                        ${renderVAReference(event.level, 1)}
+                    </div>
+                `;
+            }
+
+            // S2 event
+            let contextHtml = '';
+            if (ctx.isS2ForS1) {
+                // S2 translating an S1 table address
+                contextHtml = `
+                    <div class="context-box">
+                        <div class="context-title">
+                            🟣 Stage 2 Nested Translation (translating S1 L${ctx.s1Level} table address)
+                        </div>
+                        <div class="context-breadcrumb">
+                            <span class="crumb s1">S1 L${ctx.s1Level}</span>
+                            <span class="arrow">needs table at IPA</span>
+                            <span class="crumb" style="background: var(--accent-yellow); color: #0d1117;">${ctx.tableIPA || '?'}</span>
+                            <span class="arrow">→ S2 translates →</span>
+                            <span class="crumb ${event.level === 0 ? 'active' : ''}">S2 L${event.level}</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                            ℹ️ ${ctx.explanation}. The address <code style="color: var(--accent-yellow);">${ctx.tableIPA}</code> is an IPA that must be translated to PA before S1 can read from it.
+                        </div>
+                        ${renderVAReference(ctx.s1Level, 2)}
+                    </div>
+                `;
+            } else if (ctx.isFinalS2) {
+                // Final S2 translation
+                contextHtml = `
+                    <div class="context-box">
+                        <div class="context-title">
+                            🟣 Stage 2 Final Translation (IPA → PA)
+                        </div>
+                        <div class="context-breadcrumb">
+                            <span class="crumb s1">S1 Complete</span>
+                            <span class="arrow">→ IPA</span>
+                            <span class="crumb" style="background: var(--accent-magenta); color: #0d1117;">${walkData.ipa || '?'}</span>
+                            <span class="arrow">→ S2 →</span>
+                            <span class="crumb ${event.level === event.level ? 'active' : ''}">L${event.level}</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                            ℹ️ Stage 1 produced IPA ${walkData.ipa}. Now Stage 2 translates this to the final Physical Address.
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Generic S2
+                contextHtml = `
+                    <div class="context-box">
+                        <div class="context-title">
+                            🟣 Stage 2 Translation
+                        </div>
+                        <div class="context-breadcrumb">
+                            <span class="crumb">IPA</span>
+                            <span class="arrow">→</span>
+                            <span class="crumb ${event.level === 0 ? 'active' : ''}">L0</span>
+                            ${event.level >= 1 ? `<span class="arrow">→</span><span class="crumb ${event.level === 1 ? 'active' : ''}">L1</span>` : ''}
+                            ${event.level >= 2 ? `<span class="arrow">→</span><span class="crumb ${event.level === 2 ? 'active' : ''}">L2</span>` : ''}
+                            ${event.level >= 3 ? `<span class="arrow">→</span><span class="crumb ${event.level === 3 ? 'active' : ''}">L3</span>` : ''}
+                            <span class="arrow">→</span>
+                            <span class="crumb">PA</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return contextHtml;
+        }
+
+        // Helper: Explain how the memory access address was calculated
+        function explainAddressCalculation(event, eventIndex) {
+            const regs = getRegisterValues();
+            const level = event.level;
+            const stage = event.stage;
+            const memAddr = event.address || '0x0';
+
+            // Determine the source of the table base
+            let tableBase = '';
+            let tableBaseSource = '';
+            let indexSource = '';
+            let indexValue = 0;
+
+            if (level === 0) {
+                // Level 0: table base comes from a register
+                if (stage === 1) {
+                    tableBase = regs.ttbr0;
+                    tableBaseSource = 'TTBR0_EL1';
+                    indexValue = walkData.l0_index || 0;
+                    indexSource = 'VA[47:39]';
+                } else {
+                    tableBase = regs.vttbr;
+                    tableBaseSource = 'VTTBR_EL2';
+                    // For S2, need to find the IPA index
+                    // The IPA being translated is in the purpose or we compute from address
+                    const ctx = analyzeS2Context(event, eventIndex);
+                    if (ctx.tableIPA) {
+                        indexValue = extractIndex(ctx.tableIPA, 0);
+                        indexSource = `IPA[47:39] of ${ctx.tableIPA}`;
+                    } else if (ctx.isFinalS2) {
+                        indexValue = extractIndex(walkData.ipa || '0x0', 0);
+                        indexSource = `IPA[47:39] of ${walkData.ipa}`;
+                    } else {
+                        indexValue = extractIndex(memAddr, 0);
+                        indexSource = 'IPA[47:39]';
+                    }
+                }
+            } else {
+                // Level > 0: table base comes from previous descriptor's output
+                // Find the previous event at level-1 in the same stage context
+                let prevOutput = null;
+                for (let i = eventIndex - 1; i >= 0; i--) {
+                    const prevEvt = walkData.events[i];
+                    if (prevEvt.stage === stage && prevEvt.level === level - 1) {
+                        prevOutput = prevEvt.output;
+                        break;
+                    }
+                }
+
+                tableBase = prevOutput || '(from previous level)';
+                tableBaseSource = `S${stage} L${level - 1} output`;
+
+                // Get the appropriate index based on level
+                if (stage === 1) {
+                    const indices = [walkData.l0_index, walkData.l1_index, walkData.l2_index, walkData.l3_index];
+                    indexValue = indices[level] || 0;
+                    const bitRanges = ['[47:39]', '[38:30]', '[29:21]', '[20:12]'];
+                    indexSource = `VA${bitRanges[level]}`;
+                } else {
+                    // For S2, extract from the IPA being translated
+                    const ctx = analyzeS2Context(event, eventIndex);
+                    const bitRanges = ['[47:39]', '[38:30]', '[29:21]', '[20:12]'];
+                    if (ctx.tableIPA) {
+                        indexValue = extractIndex(ctx.tableIPA, level);
+                        indexSource = `IPA${bitRanges[level]} of ${ctx.tableIPA}`;
+                    } else if (ctx.isFinalS2) {
+                        indexValue = extractIndex(walkData.ipa || '0x0', level);
+                        indexSource = `IPA${bitRanges[level]} of ${walkData.ipa}`;
+                    } else {
+                        indexValue = extractIndex(memAddr, level);
+                        indexSource = `IPA${bitRanges[level]}`;
+                    }
+                }
+            }
+
+            // Calculate expected address
+            const offset = indexValue * 8;
+
+            return {
+                tableBase,
+                tableBaseSource,
+                indexValue,
+                indexSource,
+                offset,
+                formula: `${tableBaseSource} + (index × 8)`,
+                calculation: `${tableBase} + (${indexValue} × 8) = ${tableBase} + 0x${offset.toString(16).toUpperCase()}`
+            };
+        }
+
+
+        const fileLoader = document.getElementById('fileLoader');
+        const visualization = document.getElementById('visualization');
+        const jsonFileInput = document.getElementById('jsonFile');
+        const eventList = document.getElementById('eventList');
+        const detailsContent = document.getElementById('detailsContent');
+        const registerSummary = document.getElementById('registerSummary');
+        const addressSummary = document.getElementById('addressSummary');
+        const flowDiagram = document.getElementById('flowDiagram');
+        const currentStep = document.getElementById('currentStep');
+        const totalSteps = document.getElementById('totalSteps');
+        const progressBar = document.getElementById('progressBar');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+
+        const btnReset = document.getElementById('btnReset');
+        const btnPrev = document.getElementById('btnPrev');
+        const btnPlayPause = document.getElementById('btnPlayPause');
+        const btnNext = document.getElementById('btnNext');
+        const btnEnd = document.getElementById('btnEnd');
+
+        // File loading
+        jsonFileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file) loadFile(file);
+        });
+
+        fileLoader.addEventListener('dragover', e => {
+            e.preventDefault();
+            fileLoader.style.borderColor = 'var(--accent-blue)';
+        });
+
+        fileLoader.addEventListener('dragleave', () => {
+            fileLoader.style.borderColor = 'var(--border-color)';
+        });
+
+        fileLoader.addEventListener('drop', e => {
+            e.preventDefault();
+            fileLoader.style.borderColor = 'var(--border-color)';
+            const file = e.dataTransfer.files[0];
+            if (file) loadFile(file);
+        });
+
+        function loadFile(file) {
+            loadedFilePath = file.name;
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    walkData = JSON.parse(e.target.result);
+                    initializeVisualization();
+                } catch (err) {
+                    alert('Error parsing JSON: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function initializeVisualization() {
+            fileLoader.classList.add('hidden');
+            visualization.classList.remove('hidden');
+
+            // Show source file: prefer walkData.source_file (full path), fallback to loadedFilePath
+            const sourceFile = walkData.source_file || loadedFilePath || 'data injected';
+            document.getElementById('scenarioInfo').innerHTML =
+                `${walkData.scenario_name || 'Unknown'} — ${walkData.description || ''}<br><span style="font-size: 0.75rem; color: var(--accent-cyan);">📁 ${sourceFile}</span>`;
+
+            const status = walkData.status || 'UNKNOWN';
+            const badge = document.getElementById('statusBadge');
+            badge.textContent = status === 'SUCCESS' ? '✓ Translation Successful' : `✗ ${status}`;
+            badge.className = `status-badge ${status === 'SUCCESS' ? 'status-success' : 'status-fault'}`;
+
+            // Total steps = 1 (step 0) + events
+            totalSteps.textContent = walkData.events.length + 1;
+
+            renderEventList();
+            renderRegisterSummary();
+            renderAddressSummary();
+            renderFlowDiagram();
+
+            currentEventIndex = -1;
+            updateUI();
+        }
+
+        function getRegisterValues() {
+            // Get from register_snapshots if available
+            const snapshots = walkData.register_snapshots || [];
+            const start = snapshots.find(s => s.point === 'start') || {};
+            return {
+                ttbr0: start.TTBR0_EL1 || walkData.ttbr0_el1 || '0x0',
+                ttbr1: start.TTBR1_EL1 || walkData.ttbr1_el1 || '0x0',
+                vttbr: start.VTTBR_EL2 || walkData.vttbr_el2 || '0x0'
+            };
+        }
+
+        // --- Recursive View Logic ---
+        let currentView = 'timeline';
+
+        function switchView(view) {
+            currentView = view;
+            const timelineBtn = document.getElementById('btnViewTimeline');
+            const tableBtn = document.getElementById('btnViewTable');
+            const timelineView = document.getElementById('visualizer-timeline-view') || document.querySelector('.main-layout'); // fallback
+            const tableView = document.getElementById('recursiveView');
+
+            if (view === 'timeline') {
+                timelineBtn.classList.add('active');
+                tableBtn.classList.remove('active');
+                timelineView.style.display = 'grid'; // Restore grid layout
+                tableView.style.display = 'none';
+            } else {
+                timelineBtn.classList.remove('active');
+                tableBtn.classList.add('active');
+                timelineView.style.display = 'none';
+                tableView.style.display = 'block';
+                renderRecursiveTable();
+            }
+        }
+
+        function renderRecursiveTable() {
+            const tableBody = document.getElementById('recursiveTableBody');
+            tableBody.innerHTML = ''; // Clear
+
+            const events = walkData.events;
+            let groups = [];
+            let currentGroup = null;
+
+            // 1. Group events
+            events.forEach((evt, i) => {
+                const stepNum = i + 1;
+                const ctx = analyzeS2Context(evt, i);
+                let s1Level = (evt.stage === 2 && ctx.s1Level !== undefined) ? ctx.s1Level :
+                    (evt.stage === 1 ? evt.level : null);
+
+                // Enhancement: Peek ahead if s1Level is still null for S2 event
+                // This ensures we group S2 events with the S1 step they enable, even if regex fails
+                if (evt.stage === 2 && s1Level === null) {
+                    for (let j = i + 1; j < events.length; j++) {
+                        if (events[j].stage === 1) {
+                            s1Level = events[j].level;
+                            break;
+                        }
+                    }
+                }
+
+                // Start new group if needed
+                if (currentGroup === null || currentGroup.level !== s1Level) {
+                    // Save previous group if it has events
+                    if (currentGroup && (currentGroup.s1_event || currentGroup.s2_events.length > 0)) {
+                        groups.push(currentGroup);
+                    }
+
+                    // Only start grouping if we can identify an S1 level context
+                    if (s1Level !== null) {
+                        currentGroup = {
+                            level: s1Level,
+                            s2_events: [],
+                            s1_event: null
+                        };
+                    } else {
+                        // Fallback fallback for unknown events
+                        currentGroup = {
+                            level: '?',
+                            s2_events: [],
+                            s1_event: null
+                        };
+                    }
+                }
+
+                if (evt.stage === 2) {
+                    currentGroup.s2_events.push({ ...evt, originalIndex: i });
+                } else if (evt.stage === 1) {
+                    currentGroup.s1_event = { ...evt, originalIndex: i };
+                    // S1 event usually ends the sequence for this level
+                    groups.push(currentGroup);
+                    currentGroup = null;
+                }
+            });
+            // Push remaining group
+            if (currentGroup) groups.push(currentGroup);
+
+            // 2. Render groups
+            groups.forEach(grp => {
+                // Group Header
+                const headerRow = document.createElement('tr');
+                headerRow.className = 's1-group-header';
+                const levelDisplay = (typeof grp.level === 'number') ? `Stage 1 Level ${grp.level}` : grp.level;
+                headerRow.innerHTML = `
+                    <td colspan="6" style="font-weight: bold; padding: 10px;">
+                        ${levelDisplay} Translation Sequence
+                    </td>
+                `;
+                tableBody.appendChild(headerRow);
+
+                // Render S2 events (nested)
+                grp.s2_events.forEach(evt => {
+                    const row = createTableRow(evt, true);
+                    tableBody.appendChild(row);
+                });
+
+                // Render S1 event (main)
+                if (grp.s1_event) {
+                    const row = createTableRow(grp.s1_event, false);
+                    tableBody.appendChild(row);
+                }
+            });
+        }
+
+        function createTableRow(evt, isNested) {
+            const row = document.createElement('tr');
+            row.id = `table-row-${evt.originalIndex + 1}`;
+            row.className = isNested ? 's2-row' : 's1-row';
+            row.onclick = () => goToEvent(evt.originalIndex + 1);
+            row.style.cursor = 'pointer';
+
+            const stepNum = evt.originalIndex + 1;
+
+            // Determine styling
+            const badgeClass = evt.result === 'INVALID' ? 'status-fault' :
+                (evt.result === 'PAGE' ? 'status-success' : '');
+
+            const indentHTML = isNested ?
+                `<span class="tree-line"></span><span class="mini-badge" style="background:var(--accent-magenta);color:var(--bg-primary)">S2 L${evt.level}</span>` :
+                `<span class="mini-badge" style="background:var(--accent-blue);color:var(--bg-primary)">S1 L${evt.level}</span>`;
+
+            // Data extraction using the helper
+            let addr = '-';
+            let tableBase = '-';
+            let idx = '-';
+
+            try {
+                // 1. Determine address being translated
+                let addrBeingTranslated = '-';
+                if (evt.stage === 1) {
+                    addrBeingTranslated = walkData.input_va;
+                } else {
+                    const ctx = analyzeS2Context(evt, evt.originalIndex);
+                    addrBeingTranslated = ctx.addrBeingTranslated || '-';
+                    if (addrBeingTranslated === '-') {
+                        // Fallback attempt
+                        if (evt.purpose && evt.purpose.includes('@ IPA')) {
+                            const match = evt.purpose.match(/@ IPA (0x[0-9a-fA-F]+)/);
+                            if (match) addrBeingTranslated = match[1];
+                        }
+                    }
+                }
+                addr = addrBeingTranslated;
+
+                // 2. Calculate Index and Table Base directly
+                // (More robust than parsing description strings)
+                if (addr !== '-' && evt.address) {
+                    try {
+                        // Extract index from the input address (VA or IPA)
+                        // Note: extraction logic depends on granule size, assume 4KB standard for now
+                        // or check walkData.granule_kb if available in future
+                        const idxNum = extractIndex(addr, evt.level);
+                        const idxBigInt = BigInt(idxNum);
+                        idx = '0x' + idxBigInt.toString(16).toUpperCase();
+
+                        // Calculate Table Base: MemoryAccessAddr - (Index * 8)
+                        // This works because Addr = Base + (Index * 8)
+                        const memAddr = BigInt(evt.address);
+                        const offset = idxBigInt * 8n;
+                        const baseBigInt = memAddr - offset;
+                        tableBase = '0x' + baseBigInt.toString(16).toUpperCase();
+
+                    } catch (e) { console.error('Calc error', e); }
+                }
+
+                // Fallback to explainAddressCalculation if explicit calculation failed or wasn't tried
+                if (tableBase === '-' || idx === '-') {
+                    const calc = explainAddressCalculation(evt, stepNum);
+                    if (calc && calc.components) {
+                        const baseComp = calc.components.find(c => c.label.includes('Base'));
+                        if (baseComp) tableBase = baseComp.value;
+
+                        const idxComp = calc.components.find(c => c.label.includes('Index'));
+                        if (idxComp) idx = idxComp.value;
+                    }
+                }
+            } catch (e) { console.error(e); }
+
+            row.innerHTML = `
+                <td class="cell-indent">
+                    ${indentHTML} 
+                    <span style="color: var(--text-secondary); margin-left:8px;">Step ${stepNum}</span>
+                </td>
+                <td style="font-family:monospace; font-size:0.8rem;">
+                    ${addr}
+                </td>
+                <td style="font-family:monospace; font-size:0.8rem;">
+                    ${tableBase}
+                </td>
+                <td style="font-family:monospace; font-size:0.8rem;">
+                    ${idx}
+                </td>
+                 <td style="font-family:monospace; font-size:0.8rem; color:var(--accent-yellow)">
+                    ${evt.descriptor_value || '-'}
+                </td>
+                <td><span class="${badgeClass}">${evt.result}</span></td>
+            `;
+
+            return row;
+        }
+
+        function renderEventList() {
+            const regs = getRegisterValues();
+
+            // Step 0: Initialization
+            let html = `
+                <div class="event-item step-zero" id="evt-0" onclick="goToEvent(0)">
+                    <div class="event-num">Step 0 · Initialization</div>
+                    <div class="event-badges">
+                        <span class="badge badge-init">INIT</span>
+                    </div>
+                    <div class="event-hint">Read registers, calculate indices</div>
+                </div>
+            `;
+
+            // Regular events (steps 1+)
+            html += walkData.events.map((evt, i) => {
+                const stageCls = evt.stage === 1 ? 'badge-s1' : 'badge-s2';
+                const stageLabel = evt.stage === 1 ? 'S1' : 'S2';
+                let resultCls = 'badge-table';
+                if (evt.result === 'PAGE') resultCls = 'badge-page';
+                else if (evt.result === 'BLOCK') resultCls = 'badge-block';
+
+                const stepNum = i + 1;
+                const purposeShort = evt.purpose.length > 30 ? evt.purpose.substring(0, 30) + '...' : evt.purpose;
+
+                return `
+                    <div class="event-item" id="evt-${stepNum}" onclick="goToEvent(${stepNum})">
+                        <div class="event-num">Step ${stepNum} · ${purposeShort}</div>
+                        <div class="event-badges">
+                            <span class="badge ${stageCls}">${stageLabel}</span>
+                            <span class="badge">L${evt.level}</span>
+                            <span class="badge ${resultCls}">${evt.result}</span>
+                        </div>
+                        <div class="event-hint">See details panel for bit breakdown →</div>
+                    </div>
+                `;
+            }).join('');
+
+            eventList.innerHTML = html;
+        }
+
+        function renderRegisterSummary() {
+            const regs = getRegisterValues();
+            registerSummary.innerHTML = `
+                <div class="reg-grid">
+                    <div class="reg-item">
+                        <span class="reg-name">TTBR0_EL1</span>
+                        <span class="reg-value">${regs.ttbr0}</span>
+                    </div>
+                    <div class="reg-item">
+                        <span class="reg-name">TTBR1_EL1</span>
+                        <span class="reg-value">${regs.ttbr1}</span>
+                    </div>
+                    <div class="reg-item">
+                        <span class="reg-name">VTTBR_EL2</span>
+                        <span class="reg-value">${regs.vttbr}</span>
+                    </div>
+                </div>
+                <p style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                    S1 table base from TTBR0/1, S2 table base from VTTBR
+                </p>
+            `;
+        }
+
+        function renderAddressSummary() {
+            const va = walkData.input_va || '0x0';
+            const ipa = walkData.ipa || '-';
+            const pa = walkData.output_pa || '-';
+
+            addressSummary.innerHTML = `
+                <div class="summary-item">
+                    <span class="summary-label">Virtual Address</span>
+                    <span class="summary-value">${va}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">L0 [47:39]</span>
+                    <span class="summary-value">0x${(walkData.l0_index || 0).toString(16).toUpperCase().padStart(3, '0')}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">L1 [38:30]</span>
+                    <span class="summary-value">0x${(walkData.l1_index || 0).toString(16).toUpperCase().padStart(3, '0')}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">L2 [29:21]</span>
+                    <span class="summary-value">0x${(walkData.l2_index || 0).toString(16).toUpperCase().padStart(3, '0')}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">L3 [20:12]</span>
+                    <span class="summary-value">0x${(walkData.l3_index || 0).toString(16).toUpperCase().padStart(3, '0')}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Offset [11:0]</span>
+                    <span class="summary-value">0x${(walkData.page_offset || 0).toString(16).toUpperCase().padStart(3, '0')}</span>
+                </div>
+                <div class="summary-item" style="margin-top: 0.3rem; padding-top: 0.3rem; border-top: 2px solid var(--bg-highlight);">
+                    <span class="summary-label">IPA</span>
+                    <span class="summary-value" style="color: var(--accent-magenta);">${ipa}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">PA</span>
+                    <span class="summary-value" style="color: var(--accent-green);">${pa}</span>
+                </div>
+            `;
+        }
+
+        function renderFlowDiagram() {
+            flowDiagram.innerHTML = `
+                <div class="flow-diagram">
+                    <div class="flow-step" id="flow-va">
+                        <span class="flow-icon">📥</span>
+                        <div>
+                            <div class="flow-label">Virtual Address</div>
+                            <div class="flow-value">${walkData.input_va || '-'}</div>
+                        </div>
+                    </div>
+                    <div class="flow-arrow">↓ Stage 1</div>
+                    <div class="flow-step" id="flow-ipa">
+                        <span class="flow-icon">🔄</span>
+                        <div>
+                            <div class="flow-label">Intermediate PA</div>
+                            <div class="flow-value">${walkData.ipa || '-'}</div>
+                        </div>
+                    </div>
+                    <div class="flow-arrow">↓ Stage 2</div>
+                    <div class="flow-step" id="flow-pa">
+                        <span class="flow-icon">📤</span>
+                        <div>
+                            <div class="flow-label">Physical Address</div>
+                            <div class="flow-value">${walkData.output_pa || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStep0Details() {
+            const regs = getRegisterValues();
+            const va = walkData.input_va || '0x0';
+            const granule = walkData.granule_kb || 4;
+
+            detailsContent.innerHTML = `
+                <div class="step-guide">
+                    <div class="step-guide-title">📖 How to read this step</div>
+                    <div class="step-guide-text">
+                        This is the <strong>initialization step</strong> before any memory accesses occur.
+                        The CPU reads the translation table base registers and calculates the indices 
+                        from the Virtual Address that will be used to look up each level of the page table.
+                    </div>
+                </div>
+
+                <div class="details-grid">
+                    <!-- Input Registers -->
+                    <div class="detail-field highlight-reg">
+                        <div class="field-header">
+                            <span class="field-label">Translation Table Base Registers</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    <strong>TTBR0_EL1:</strong> Points to Stage 1 table for lower VA range (0x0...)<br>
+                                    <strong>TTBR1_EL1:</strong> Points to Stage 1 table for upper VA range (0xFFFF...)<br>
+                                    <strong>VTTBR_EL2:</strong> Points to Stage 2 table base (used by hypervisor)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="reg-grid">
+                            <div class="reg-item">
+                                <div class="reg-row-top">
+                                    <span class="reg-name">TTBR0_EL1</span>
+                                    <span class="reg-value">${regs.ttbr0}</span>
+                                </div>
+                                <div class="reg-binary">${formatBinary(regs.ttbr0)}</div>
+                            </div>
+                            <div class="reg-item">
+                                <div class="reg-row-top">
+                                    <span class="reg-name">TTBR1_EL1</span>
+                                    <span class="reg-value">${regs.ttbr1}</span>
+                                </div>
+                                <div class="reg-binary">${formatBinary(regs.ttbr1)}</div>
+                            </div>
+                            <div class="reg-item">
+                                <div class="reg-row-top">
+                                    <span class="reg-name">VTTBR_EL2</span>
+                                    <span class="reg-value">${regs.vttbr}</span>
+                                </div>
+                                <div class="reg-binary">${formatBinary(regs.vttbr)}</div>
+                            </div>
+                        </div>
+                        <div class="field-desc">
+                            Stage 1 walk starts at TTBR0_EL1 (for this VA). Stage 2 walks use VTTBR_EL2.
+                        </div>
+                    </div>
+
+                    <!-- Input VA -->
+                    <div class="detail-field highlight-input">
+                        <div class="field-header">
+                            <span class="field-label">Input Virtual Address</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    The 48-bit (or 52-bit) virtual address from the CPU that needs to be translated 
+                                    to a physical address through the page table walk.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">${va}</div>
+                        <div class="field-desc">
+                            This VA will be translated through ${walkData.events?.length || 0} memory accesses
+                        </div>
+                    </div>
+
+                    <!-- Granule Size -->
+                    <div class="detail-field">
+                        <div class="field-header">
+                            <span class="field-label">Granule Size</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    The page size used for translation. Determines how bits are sliced:<br>
+                                    <strong>4KB:</strong> 9-bit indices, 12-bit offset<br>
+                                    <strong>16KB:</strong> 11-bit indices, 14-bit offset<br>
+                                    <strong>64KB:</strong> 13-bit indices, 16-bit offset
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">${granule}KB</div>
+                        <div class="field-desc">
+                            Each table has ${granule === 4 ? 512 : granule === 16 ? 2048 : 8192} entries, 
+                            final page is ${granule}KB aligned
+                        </div>
+                    </div>
+
+                    <!-- Index Calculation -->
+                    <div class="detail-field highlight-calc">
+                        <div class="field-header">
+                            <span class="field-label">Index Extraction from VA (4KB Granule)</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    The VA is split into 9-bit chunks. Each chunk selects an entry 
+                                    in the corresponding level's translation table (0-511).
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bit-diagram">
+                            <div class="bit-row">
+                                <span class="bit-label">L0 [47:39]:</span>
+                                <span class="bit-tag" style="background: var(--accent-blue); color: var(--bg-primary);">
+                                    0x${(walkData.l0_index || 0).toString(16).toUpperCase().padStart(3, '0')} = ${walkData.l0_index || 0}
+                                </span>
+                                <span style="color: var(--text-secondary);">→ selects entry in L0 table</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">L1 [38:30]:</span>
+                                <span class="bit-tag" style="background: var(--accent-magenta); color: var(--bg-primary);">
+                                    0x${(walkData.l1_index || 0).toString(16).toUpperCase().padStart(3, '0')} = ${walkData.l1_index || 0}
+                                </span>
+                                <span style="color: var(--text-secondary);">→ selects entry in L1 table</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">L2 [29:21]:</span>
+                                <span class="bit-tag" style="background: var(--accent-green); color: var(--bg-primary);">
+                                    0x${(walkData.l2_index || 0).toString(16).toUpperCase().padStart(3, '0')} = ${walkData.l2_index || 0}
+                                </span>
+                                <span style="color: var(--text-secondary);">→ selects entry in L2 table</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">L3 [20:12]:</span>
+                                <span class="bit-tag" style="background: var(--accent-yellow); color: var(--bg-primary);">
+                                    0x${(walkData.l3_index || 0).toString(16).toUpperCase().padStart(3, '0')} = ${walkData.l3_index || 0}
+                                </span>
+                                <span style="color: var(--text-secondary);">→ selects entry in L3 table</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">Offset [11:0]:</span>
+                                <span class="bit-tag" style="background: var(--accent-orange); color: var(--bg-primary);">
+                                    0x${(walkData.page_offset || 0).toString(16).toUpperCase().padStart(3, '0')} = ${walkData.page_offset || 0}
+                                </span>
+                                <span style="color: var(--text-secondary);">→ offset within final page</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Next Step -->
+                    <div class="detail-field" style="border-left-color: var(--accent-green); background: rgba(63, 185, 80, 0.1);">
+                        <div class="field-header">
+                            <span class="field-label">▶ Next: Memory Access Begins</span>
+                        </div>
+                        <div class="field-desc" style="font-size: 0.85rem; color: var(--text-primary);">
+                            Click <strong>Next</strong> to start the walk. The first access will read from 
+                            the Stage 1 L0 table at address TTBR0_EL1 + (L0_index × 8).
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderEventDetails(event, stepNum) {
+            const memAccessAddr = event.address || '0x0';  // PA where descriptor is read
+            const desc = event.descriptor_value || '0x0';
+            const output = event.output || '0x0';
+            const eventIndex = stepNum - 1; // stepNum is 1-indexed, events are 0-indexed
+
+            const descNum = BigInt(desc);
+
+            // Determine the ADDRESS BEING TRANSLATED (not the memory access address!)
+            // For S1: it's the original VA
+            // For S2: it's the IPA being translated (extracted from purpose or calculated)
+            let addrBeingTranslated;
+            let addrBeingTranslatedLabel;
+
+            if (event.stage === 1) {
+                // S1 uses the original VA
+                addrBeingTranslated = walkData.input_va || '0x0';
+                addrBeingTranslatedLabel = 'Original Virtual Address';
+            } else {
+                // S2: extract the IPA from the purpose or use calculated IPA
+                const ctx = analyzeS2Context(event, eventIndex);
+                if (ctx.tableIPA) {
+                    addrBeingTranslated = ctx.tableIPA;
+                    addrBeingTranslatedLabel = `IPA of S1 L${ctx.s1Level} table`;
+                } else if (ctx.isFinalS2) {
+                    addrBeingTranslated = walkData.ipa || '0x0';
+                    addrBeingTranslatedLabel = 'Final IPA from S1';
+                } else {
+                    // Fallback - try to extract from purpose
+                    const ipaMatch = event.purpose.match(/IPA\s+(0x[0-9A-Fa-f]+)/);
+                    if (ipaMatch) {
+                        addrBeingTranslated = ipaMatch[1];
+                        addrBeingTranslatedLabel = 'IPA being translated';
+                    } else {
+                        addrBeingTranslated = '0x0';
+                        addrBeingTranslatedLabel = 'IPA (unknown)';
+                    }
+                }
+            }
+
+            let indexBitsHigh, indexBitsLow, indexBitsLabel, indexColor;
+            switch (event.level) {
+                case 0: indexBitsHigh = 47; indexBitsLow = 39; indexBitsLabel = '[47:39]'; indexColor = '#58a6ff'; break;
+                case 1: indexBitsHigh = 38; indexBitsLow = 30; indexBitsLabel = '[38:30]'; indexColor = '#bc8cff'; break;
+                case 2: indexBitsHigh = 29; indexBitsLow = 21; indexBitsLabel = '[29:21]'; indexColor = '#3fb950'; break;
+                case 3: indexBitsHigh = 20; indexBitsLow = 12; indexBitsLabel = '[20:12]'; indexColor = '#d29922'; break;
+                default: indexBitsHigh = 20; indexBitsLow = 12; indexBitsLabel = '[?:?]'; indexColor = '#8b949e';
+            }
+
+            // Use the ADDRESS BEING TRANSLATED for index extraction (not memory access address!)
+            const tableIndex = extractIndex(addrBeingTranslated, event.level);
+            const indexBinary = getBitRange(addrBeingTranslated, indexBitsHigh, indexBitsLow);
+            const typeBits = Number(descNum & 0x3n);
+
+            let typeDesc = '';
+            if (typeBits === 0b11) typeDesc = 'Table descriptor → points to next level table';
+            else if (typeBits === 0b01) typeDesc = 'Block descriptor → large page mapping';
+            else if (typeBits === 0b00) typeDesc = 'Invalid → translation fault';
+            else typeDesc = `Type bits = ${typeBits.toString(2).padStart(2, '0')}`;
+
+            const stageDesc = event.stage === 1
+                ? 'Stage 1 translates VA → IPA (Guest OS view)'
+                : 'Stage 2 translates IPA → PA (Hypervisor view)';
+
+            // Build bit visualization HTML (from ADDRESS BEING TRANSLATED, not memory access address)
+            const addrBitsHtml = formatAddressBits(addrBeingTranslated, indexBitsHigh, indexBitsLow, indexColor);
+
+
+            // Build context box HTML
+            const contextBoxHtml = renderS2ContextBox(event, eventIndex);
+
+            // Get address calculation explanation
+            const addrCalc = explainAddressCalculation(event, eventIndex);
+
+            detailsContent.innerHTML = `
+                ${contextBoxHtml}
+
+                
+                <div class="step-guide">
+                    <div class="step-guide-title">📖 How to read this step</div>
+                    <div class="step-guide-text">
+                        <strong>1.</strong> Look at the <em>Address Being Translated</em> — this is the input to this step.<br>
+                        <strong>2.</strong> The <em>Index Extraction</em> shows which bits select the table entry.<br>
+                        <strong>3.</strong> The <em>Descriptor Value</em> is what was read from memory at that entry.<br>
+                        <strong>4.</strong> The <em>Type</em> tells us whether to continue walking or if we're done.<br>
+                        <strong>5.</strong> The <em>Output</em> is either the next table base or the final address.
+                    </div>
+                </div>
+
+                <div class="details-grid">
+
+                    <!-- Operation -->
+                    <div class="detail-field">
+                        <div class="field-header">
+                            <span class="field-label">Step ${stepNum}: Current Operation</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    Each step in the walk reads one descriptor from memory.
+                                    ${stageDesc}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value" style="font-size: 1rem;">${event.purpose}</div>
+                        <div class="field-desc">Stage ${event.stage} · Level ${event.level} · ${stageDesc}</div>
+                    </div>
+
+                    <!-- Input Address -->
+                    <div class="detail-field highlight-input">
+                        <div class="field-header">
+                            <span class="field-label">① Address Being Translated</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    This is the address whose bits are used to calculate the table index.
+                                    For S1: the original VA. For S2: an IPA that needs translation.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">${addrBeingTranslated}</div>
+                        <div class="field-desc">
+                            ${addrBeingTranslatedLabel}
+                        </div>
+                    </div>
+
+                    <!-- Index Extraction with Bit Visualization -->
+                    <div class="detail-field highlight-calc">
+                        <div class="field-header">
+                            <span class="field-label">② Index Extraction ${indexBitsLabel}</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    Extract 9 bits from the address to get the table entry number (0-511).<br><br>
+                                    <strong>Formula:</strong> (address >> ${indexBitsLow}) & 0x1FF<br>
+                                    <strong>Result:</strong> Entry #${tableIndex}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">
+                            0x${tableIndex.toString(16).toUpperCase().padStart(3, '0')} 
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">(decimal: ${tableIndex})</span>
+                        </div>
+                        
+                        <!-- Bit-level visualization -->
+                        <div class="bit-diagram" style="margin-top: 0.5rem;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem;">
+                                Address bits (highlighted = index bits ${indexBitsLabel}):
+                            </div>
+                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 1px;">
+                                ${addrBitsHtml}
+                            </div>
+                            <div style="margin-top: 0.4rem; font-size: 0.7rem;">
+                                <span style="color: ${indexColor};">Index bits: ${indexBinary}</span>
+                                <span style="color: var(--text-secondary);"> = </span>
+                                <span style="color: var(--text-primary);">${tableIndex}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="field-desc">
+                            Bits ${indexBitsLabel} → entry #${tableIndex} in the Level ${event.level} table
+                        </div>
+                    </div>
+
+
+                    <!-- Memory Access Address Calculation -->
+                    <div class="detail-field highlight-calc">
+                        <div class="field-header">
+                            <span class="field-label">③ Memory Access Address</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    The physical address where the descriptor is read.
+                                    Calculated as: table_base + (index × 8) since each descriptor is 8 bytes.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">${event.address || '0x?'}</div>
+                        
+                        <!-- Calculation breakdown -->
+                        <div class="bit-diagram" style="margin-top: 0.5rem;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+                                How this address was calculated:
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">Table Base:</span>
+                                <span class="bit-tag" style="background: var(--accent-cyan); color: #0d1117;">
+                                    ${addrCalc.tableBase}
+                                </span>
+                                <span style="color: var(--text-secondary);">← ${addrCalc.tableBaseSource}</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">Index:</span>
+                                <span class="bit-tag" style="background: var(--accent-yellow); color: #0d1117;">
+                                    ${addrCalc.indexValue}
+                                </span>
+                                <span style="color: var(--text-secondary);">← ${addrCalc.indexSource}</span>
+                            </div>
+                            <div class="bit-row">
+                                <span class="bit-label">Offset:</span>
+                                <span class="bit-tag" style="background: var(--bg-highlight); color: var(--text-primary);">
+                                    ${addrCalc.indexValue} × 8 = 0x${addrCalc.offset.toString(16).toUpperCase()}
+                                </span>
+                                <span style="color: var(--text-secondary);">(each descriptor is 8 bytes)</span>
+                            </div>
+                            <div style="margin-top: 0.5rem; padding: 0.4rem; background: var(--bg-tertiary); border-radius: 4px;">
+                                <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--accent-green);">
+                                    mem_addr = ${addrCalc.tableBaseSource} + (index × 8)
+                                </div>
+                                <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-primary); margin-top: 0.2rem;">
+                                    ${addrCalc.tableBase} + 0x${addrCalc.offset.toString(16).toUpperCase()} = ${event.address}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="field-desc">
+                            Read 8 bytes from this address to get the descriptor
+                        </div>
+                    </div>
+
+
+                    <!-- Descriptor Value -->
+                    <div class="detail-field highlight-read">
+                        <div class="field-header">
+                            <span class="field-label">④ Descriptor Value Read (64-bit)</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    The raw 64-bit descriptor read from memory.<br><br>
+                                    <strong>Bits [1:0]:</strong> Type (00=invalid, 01=block, 11=table/page)<br>
+                                    <strong>Bits [47:12]:</strong> Output address base<br>
+                                    <strong>Upper bits:</strong> Attributes and permissions
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">${desc}</div>
+                        <div class="bit-diagram">
+                            <div class="bit-row">
+                                <span class="bit-label">Bit Fields:</span>
+                                <span class="bit-tag" style="background: var(--accent-magenta); color: var(--bg-primary);">
+                                    [1:0] = ${typeBits.toString(2).padStart(2, '0')}
+                                </span>
+                                <span class="bit-tag" style="background: var(--accent-green); color: var(--bg-primary);">
+                                    [47:12] Output
+                                </span>
+                                <span class="bit-tag" style="background: var(--bg-highlight); color: var(--text-secondary);">
+                                    [63:48] Attrs
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Type -->
+                    <div class="detail-field highlight-read">
+                        <div class="field-header">
+                            <span class="field-label">⑤ Descriptor Type</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    <strong>TABLE (11):</strong> Continue to next level table<br>
+                                    <strong>BLOCK (01):</strong> Large page (1GB@L1, 2MB@L2)<br>
+                                    <strong>PAGE (11@L3):</strong> 4KB final page<br>
+                                    <strong>INVALID (00):</strong> Causes translation fault
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value">
+                            <span class="badge ${event.result === 'TABLE' ? 'badge-table' : event.result === 'PAGE' ? 'badge-page' : 'badge-block'}" 
+                                  style="font-size: 0.9rem; padding: 0.3rem 0.8rem;">
+                                ${event.result}
+                            </span>
+                        </div>
+                        <div class="field-desc">${typeDesc}</div>
+                    </div>
+
+                    <!-- Output -->
+                    <div class="detail-field highlight-output">
+                        <div class="field-header">
+                            <span class="field-label">⑥ Output Address</span>
+                            <div class="tooltip-container">
+                                <span class="info-icon">i</span>
+                                <div class="tooltip-text">
+                                    <strong>If TABLE:</strong> Base address of next-level table<br>
+                                    <strong>If PAGE/BLOCK:</strong> Final translated address (before adding page offset)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-value" style="color: var(--accent-green);">${output}</div>
+                        <div class="field-desc">
+                            ${event.result === 'TABLE'
+                    ? `→ Continue walk at Level ${event.level + 1} using this as table base`
+                    : `→ Translation complete (${event.result === 'BLOCK' ? 'block' : 'page'}-aligned)`}
+                        </div>
+                    </div>
+
+                    ${event.result !== 'TABLE' ? `
+                    <div class="detail-field" style="border-left-color: var(--accent-green); background: rgba(63, 185, 80, 0.1);">
+                        <div class="field-header">
+                            <span class="field-label">🎯 ${event.stage === 1 ? 'Stage 1' : 'Stage 2'} Translation Complete!</span>
+                        </div>
+                        <div class="field-desc" style="font-size: 0.85rem; color: var(--text-primary);">
+                            ${event.stage === 1
+                        ? 'Output is an IPA. Stage 2 will translate this to final PA.'
+                        : 'Output + page offset = final Physical Address.'}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function updateUI() {
+            // Step 0 is index 0, events are 1 to N
+            const totalCount = (walkData?.events?.length || 0) + 1;
+            currentStep.textContent = Math.max(0, currentEventIndex);
+            const pct = totalCount > 0 ? (Math.max(0, currentEventIndex) / (totalCount - 1)) * 100 : 0;
+            progressBar.style.width = `${pct}%`;
+
+            // Update event list highlighting
+            document.querySelectorAll('.event-item').forEach((el, i) => {
+                el.classList.remove('active', 'completed');
+                if (i < currentEventIndex) el.classList.add('completed');
+                else if (i === currentEventIndex) {
+                    el.classList.add('active');
+                    if (currentView === 'timeline') el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+
+            // Update Recursive Table highlighting
+            document.querySelectorAll('.recursive-table tr').forEach(r => r.classList.remove('active-row'));
+            if (currentEventIndex > 0) {
+                const row = document.getElementById(`table-row-${currentEventIndex}`);
+                if (row) {
+                    row.classList.add('active-row');
+                    if (currentView === 'table') row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+
+            // Update flow diagram
+            updateFlowState();
+
+            // Render details based on current step
+            if (currentEventIndex === 0) {
+                renderStep0Details();
+            } else if (currentEventIndex > 0 && walkData?.events?.[currentEventIndex - 1]) {
+                renderEventDetails(walkData.events[currentEventIndex - 1], currentEventIndex);
+            } else {
+                detailsContent.innerHTML = `<div class="placeholder-msg"><p>👆 Click <strong>Play</strong> or select a step</p></div>`;
+            }
+
+            // Button states
+            const totalStepsCount = (walkData?.events?.length || 0) + 1;
+            btnPrev.disabled = currentEventIndex <= 0;
+            btnNext.disabled = !walkData || currentEventIndex >= totalStepsCount - 1;
+            btnPlayPause.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+        }
+
+        function updateFlowState() {
+            const flowVA = document.getElementById('flow-va');
+            const flowIPA = document.getElementById('flow-ipa');
+            const flowPA = document.getElementById('flow-pa');
+
+            [flowVA, flowIPA, flowPA].forEach(el => el?.classList.remove('active', 'completed'));
+
+            if (currentEventIndex < 0) return;
+
+            flowVA?.classList.add('completed');
+
+            // Check if S1 complete (eventIndex is 1-based for events)
+            const evtIdx = currentEventIndex - 1;
+            const s1Complete = walkData.events.some((e, i) =>
+                i <= evtIdx && e.stage === 1 && (e.result === 'PAGE' || e.result === 'BLOCK'));
+
+            if (s1Complete) {
+                flowIPA?.classList.add('completed');
+                const lastEvtIdx = walkData.events.length;
+                if (currentEventIndex < lastEvtIdx) {
+                    flowPA?.classList.add('active');
+                }
+            } else if (currentEventIndex > 0) {
+                const curr = walkData.events[evtIdx];
+                if (curr?.stage === 1) flowIPA?.classList.add('active');
+            }
+
+            if (walkData.status === 'SUCCESS' && currentEventIndex === walkData.events.length) {
+                flowPA?.classList.add('completed');
+            }
+        }
+
+        // Controls
+        const btnLoadAnother = document.getElementById('btnLoadAnother');
+
+        btnLoadAnother.addEventListener('click', () => {
+            stopPlaying();
+            // Reset state
+            walkData = null;
+            currentEventIndex = -1;
+            loadedFilePath = '';
+            // Show file loader, hide visualization
+            fileLoader.classList.remove('hidden');
+            visualization.classList.add('hidden');
+            // Clear the file input so same file can be loaded again
+            jsonFileInput.value = '';
+        });
+
+        btnReset.addEventListener('click', () => {
+            stopPlaying();
+            currentEventIndex = -1;
+            updateUI();
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (currentEventIndex > 0) { currentEventIndex--; updateUI(); }
+        });
+
+        btnNext.addEventListener('click', () => {
+            const totalCount = (walkData?.events?.length || 0) + 1;
+            if (walkData && currentEventIndex < totalCount - 1) { currentEventIndex++; updateUI(); }
+        });
+
+        btnEnd.addEventListener('click', () => {
+            stopPlaying();
+            if (walkData) { currentEventIndex = walkData.events.length; updateUI(); }
+        });
+
+        btnPlayPause.addEventListener('click', () => {
+            isPlaying ? stopPlaying() : startPlaying();
+        });
+
+        // View Toggles
+        document.getElementById('btnViewTimeline').addEventListener('click', () => switchView('timeline'));
+        document.getElementById('btnViewTable').addEventListener('click', () => switchView('table'));
+
+        function startPlaying() {
+            isPlaying = true;
+            btnPlayPause.textContent = '⏸ Pause';
+            const totalCount = (walkData?.events?.length || 0) + 1;
+            if (currentEventIndex >= totalCount - 1) currentEventIndex = -1;
+            playInterval = setInterval(() => {
+                const totalCount = (walkData?.events?.length || 0) + 1;
+                if (currentEventIndex < totalCount - 1) {
+                    currentEventIndex++;
+                    updateUI();
+                } else {
+                    stopPlaying();
+                }
+            }, animationSpeed);
+        }
+
+        function stopPlaying() {
+            isPlaying = false;
+            btnPlayPause.textContent = '▶ Play';
+            if (playInterval) { clearInterval(playInterval); playInterval = null; }
+        }
+
+        function goToEvent(index) {
+            stopPlaying();
+            currentEventIndex = index;
+            updateUI();
+        }
+
+        speedSlider.addEventListener('input', e => {
+            animationSpeed = parseInt(e.target.value);
+            speedValue.textContent = `${animationSpeed}ms`;
+            if (isPlaying) { stopPlaying(); startPlaying(); }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', e => {
+            if (!walkData) return;
+            switch (e.key) {
+                case ' ': e.preventDefault(); btnPlayPause.click(); break;
+                case 'ArrowLeft': btnPrev.click(); break;
+                case 'ArrowRight': btnNext.click(); break;
+                case 'Home': btnReset.click(); break;
+                case 'End': btnEnd.click(); break;
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,82 @@
+{
+    "scenario_name": "gen_va_abc_pa_200abc_address_size_s1_l2",
+    "description": "VA 0xabc \u2192 PA 0x200abc, address size fault (> 48 bits)",
+    "architecture": {
+        "granule_size_kb": 4,
+        "va_bits": 48,
+        "pa_bits": 52,
+        "ipa_bits": 48
+    },
+    "registers": {
+        "TTBR0_EL1": "0x0000000000010000",
+        "TTBR1_EL1": "0x0000000080000000",
+        "VTTBR_EL2": "0x0000000000080000",
+        "TCR_EL1": {
+            "T0SZ": 16,
+            "T1SZ": 16
+        },
+        "VTCR_EL2": {
+            "T0SZ": 16,
+            "SL0": 0
+        }
+    },
+    "memory_access": {
+        "virtual_address": "0x0000000000000ABC",
+        "access_type": "READ",
+        "privilege_level": "EL0"
+    },
+    "translation_tables": {
+        "stage1": {
+            "0x0000000000040000": {
+                "value": "0x0000000000011003",
+                "comment": "S1 L0[0x0] \u2192 L1 table at IPA 0x11000"
+            },
+            "0x0000000000041000": {
+                "value": "0x0000000000012003",
+                "comment": "S1 L1[0x0] \u2192 L2 table at IPA 0x12000"
+            },
+            "0x0000000000042000": {
+                "value": "0x0000000000013003",
+                "comment": "S1 L2[0x0] \u2192 L3 table at IPA 0x13000"
+            },
+            "0x0000000000043000": {
+                "value": "0x0001000000100443",
+                "comment": "S1 L3[0x0] \u2192 Page at IPA 0x1000000100000 (ADDRESS SIZE FAULT: requires 49 bits > 48)"
+            }
+        },
+        "stage2": {
+            "0x0000000000080000": {
+                "value": "0x0000000000081003",
+                "comment": "S2 L0[0x0] \u2192 L1 table at PA 0x81000"
+            },
+            "0x0000000000081000": {
+                "value": "0x0000000000082003",
+                "comment": "S2 L1[0x0] \u2192 L2 table at PA 0x82000"
+            },
+            "0x0000000000082000": {
+                "value": "0x0000000000083003",
+                "comment": "S2 L2[0x0] \u2192 L3 table at PA 0x83000"
+            },
+            "0x0000000000083080": {
+                "value": "0x0000000000040443",
+                "comment": "S2 L3[0x10] \u2192 PA 0x40000 for IPA 0x10000 (S1 L0 table)"
+            },
+            "0x0000000000083088": {
+                "value": "0x0000000000041443",
+                "comment": "S2 L3[0x11] \u2192 PA 0x41000 for IPA 0x11000 (S1 L1 table)"
+            },
+            "0x0000000000083090": {
+                "value": "0x0000000000042443",
+                "comment": "S2 L3[0x12] \u2192 PA 0x42000 for IPA 0x12000 (S1 L2 table)"
+            },
+            "0x0000000000083098": {
+                "value": "0x0000000000043443",
+                "comment": "S2 L3[0x13] \u2192 PA 0x43000 for IPA 0x13000 (S1 L3 table)"
+            },
+            "0x0000000000083800": {
+                "value": "0x0000000000200443",
+                "comment": "S2 L3[0x100] \u2192 PA 0x200000 for IPA 0x100000 (final IPA)"
+            }
+        }
+    }
+}

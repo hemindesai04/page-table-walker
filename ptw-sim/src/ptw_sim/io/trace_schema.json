@@ -1,0 +1,358 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ARM v9 Page Table Walk Trace",
+    "description": "Formal contract for the walk trace JSON format produced by ptw-sim and consumed by ptw-viz.",
+    "type": "object",
+    "required": [
+        "format_version",
+        "input",
+        "result",
+        "walk_trace"
+    ],
+    "properties": {
+        "format_version": {
+            "type": "string",
+            "enum": [
+                "1.0"
+            ],
+            "description": "Version of the trace format."
+        },
+        "generator": {
+            "type": "string",
+            "description": "Name of the tool that generated the trace."
+        },
+        "scenario_name": {
+            "type": "string",
+            "description": "Name of the simulation scenario."
+        },
+        "description": {
+            "type": "string",
+            "description": "Optional description of the scenario."
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of generation."
+        },
+        "input": {
+            "type": "object",
+            "required": [
+                "virtual_address",
+                "access_type",
+                "privilege_level",
+                "va_bits",
+                "pa_bits"
+            ],
+            "properties": {
+                "virtual_address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]+$",
+                    "description": "The VA shifted in for translation."
+                },
+                "access_type": {
+                    "type": "string",
+                    "enum": [
+                        "READ",
+                        "WRITE",
+                        "EXECUTE"
+                    ]
+                },
+                "privilege_level": {
+                    "type": "string",
+                    "enum": [
+                        "EL0",
+                        "EL1"
+                    ]
+                },
+                "va_bits": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64
+                },
+                "pa_bits": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64
+                }
+            }
+        },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "architecture": {
+                    "type": "object",
+                    "properties": {
+                        "granule_size_kb": {
+                            "type": "integer",
+                            "enum": [
+                                4,
+                                16,
+                                64
+                            ]
+                        },
+                        "va_bits": {
+                            "type": "integer"
+                        },
+                        "pa_bits": {
+                            "type": "integer"
+                        },
+                        "ipa_bits": {
+                            "type": "integer"
+                        },
+                        "feat_d128_enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "registers": {
+                    "type": "object",
+                    "properties": {
+                        "TTBR0_EL1": {
+                            "type": "string",
+                            "pattern": "^0x[0-9A-Fa-f]+$"
+                        },
+                        "TTBR1_EL1": {
+                            "type": "string",
+                            "pattern": "^0x[0-9A-Fa-f]+$"
+                        },
+                        "VTTBR_EL2": {
+                            "type": "string",
+                            "pattern": "^0x[0-9A-Fa-f]+$"
+                        },
+                        "TCR_EL1": {
+                            "type": "object",
+                            "properties": {
+                                "T0SZ": {
+                                    "type": "integer"
+                                },
+                                "T1SZ": {
+                                    "type": "integer"
+                                }
+                            }
+                        },
+                        "VTCR_EL2": {
+                            "type": "object",
+                            "properties": {
+                                "T0SZ": {
+                                    "type": "integer"
+                                },
+                                "SL0": {
+                                    "type": "integer",
+                                    "enum": [
+                                        0,
+                                        1,
+                                        2
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "result": {
+            "type": "object",
+            "required": [
+                "status",
+                "total_memory_accesses"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "SUCCESS",
+                        "S1_FAULT",
+                        "S2_FAULT",
+                        "S2_FINAL_FAULT"
+                    ]
+                },
+                "final_pa": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "pattern": "^0x[0-9A-Fa-f]+$"
+                },
+                "ipa": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "pattern": "^0x[0-9A-Fa-f]+$"
+                },
+                "total_memory_accesses": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "walk_trace": {
+            "type": "object",
+            "required": [
+                "events",
+                "register_snapshots"
+            ],
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "event_id",
+                            "event_type",
+                            "stage",
+                            "level",
+                            "purpose",
+                            "address",
+                            "descriptor_value",
+                            "result",
+                            "output"
+                        ],
+                        "properties": {
+                            "event_id": {
+                                "type": "integer"
+                            },
+                            "event_type": {
+                                "type": "string",
+                                "enum": [
+                                    "T",
+                                    "M"
+                                ]
+                            },
+                            "stage": {
+                                "type": "integer",
+                                "enum": [
+                                    1,
+                                    2
+                                ]
+                            },
+                            "level": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 3
+                            },
+                            "purpose": {
+                                "type": "string"
+                            },
+                            "address": {
+                                "type": "string",
+                                "pattern": "^0x[0-9A-Fa-f]+$"
+                            },
+                            "descriptor_value": {
+                                "type": "string",
+                                "pattern": "^0x[0-9A-Fa-f]+$"
+                            },
+                            "result": {
+                                "type": "string"
+                            },
+                            "output": {
+                                "type": "string",
+                                "pattern": "^0x[0-9A-Fa-f]+$"
+                            }
+                        }
+                    }
+                },
+                "register_snapshots": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                }
+            }
+        },
+        "fault": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "properties": {
+                "fault_type": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2
+                    ]
+                },
+                "level": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3
+                },
+                "address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]+$"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "far_el1": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "far_el2": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "access_type": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            }
+        },
+        "final_permissions": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "properties": {
+                "read_el0": {
+                    "type": "boolean"
+                },
+                "write_el0": {
+                    "type": "boolean"
+                },
+                "read_el1": {
+                    "type": "boolean"
+                },
+                "write_el1": {
+                    "type": "boolean"
+                },
+                "execute_el0": {
+                    "type": "boolean"
+                },
+                "execute_el1": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "final_attributes": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "properties": {
+                "shareability": {
+                    "type": "string"
+                },
+                "memory_type": {
+                    "type": "string"
+                },
+                "attr_index": {
+                    "type": "integer"
+                },
+                "access_flag": {
+                    "type": "integer"
+                }
+            }
+        }
+    }
+}

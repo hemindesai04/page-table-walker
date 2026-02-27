@@ -1,0 +1,29 @@
+[project]
+name = "ptw-viz"
+version = "0.1.0"
+description = "Visualizer for ARM v9 page table walk traces — renders simulator output as terminal tables or interactive HTML"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPLv3" }
+authors = [{ name = "Hemin Desai" }]
+
+dependencies = [
+    "rich>=13.0.0",      # Terminal visualization
+    "jinja2>=3.0.0",     # HTML template rendering
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+ptw-viz = "ptw_viz.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ptw_viz"]

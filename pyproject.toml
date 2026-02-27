@@ -1,0 +1,19 @@
+[project]
+name = "ptw-walker"
+version = "0.1.0"
+description = "ARM v9 Page Table Walker Simulator"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPLv3" }
+authors = [{ name = "Hemin Desai" }]
+
+dependencies = []
+
+[tool.uv.workspace]
+members = ["ptw-sim", "ptw-viz"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
